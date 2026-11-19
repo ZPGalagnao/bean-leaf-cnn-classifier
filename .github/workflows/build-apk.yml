@@ -75,6 +75,8 @@ jobs:
           # skip the release lint check (it crashes inside a plugin, not in our code)
           printf '\nandroid {\n    lint {\n        checkReleaseBuilds = false\n    }\n}\n' >> android/app/build.gradle.kts
           tail -8 android/app/build.gradle.kts
+          # R8 rules for TensorFlow Lite (GPU delegate classes are optional and not bundled)
+          printf -- '-keep class org.tensorflow.lite.** { *; }\n-dontwarn org.tensorflow.lite.**\n' >> android/app/proguard-rules.pro
           grep -n "minSdk" android/app/build.gradle.kts
           ls -la assets/model
 
