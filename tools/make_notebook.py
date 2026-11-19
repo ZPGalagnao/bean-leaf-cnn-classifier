@@ -90,25 +90,36 @@ def collect_pools(base):
 def enough(pools):
     return all(len(pools[c]) >= PER_CLASS[c] for c in CLASSES)
 
-pools = None
-for base in [Path("/kaggle/input"), Path("data/raw"), Path("../data/raw/beans_download")]:
-    if base.exists():
-        p = collect_pools(base)
-        if enough(p):
-            pools, source = p, base
-            break
+pools, source = None, None
+# 1) Local copy of the original iBeans files (PC / GitHub Actions)
+for base in [Path("data/raw"), Path("../data/raw/beans_download")]:
+    if base.exists() and enough(p := collect_pools(base)):
+        pools, source = p, base
+        break
+
+# 2) Official iBeans download (original filenames -> same 1,000 images as the app)
+if pools is None:
+    try:
+        raw = WORK / "beans_raw"
+        raw.mkdir(exist_ok=True)
+        for split in ["train", "validation", "test"]:
+            url = f"https://huggingface.co/datasets/AI-Lab-Makerere/beans/resolve/main/data/{split}.zip"
+            zp = raw / f"{split}.zip"
+            print("Downloading", url)
+            urllib.request.urlretrieve(url, zp)
+            zipfile.ZipFile(zp).extractall(raw)
+        if enough(p := collect_pools(raw)):
+            pools, source = p, "iBeans (Hugging Face, Makerere AI Lab)"
+    except Exception as e:
+        print("Hindi ma-download ang iBeans (naka-off ba ang Internet?):", e)
+
+# 3) Fallback: a beans dataset attached with "Add Input" on Kaggle
+if pools is None and Path("/kaggle/input").exists() and enough(p := collect_pools(Path("/kaggle/input"))):
+    pools, source = p, "/kaggle/input"
+    print("PAALALA: ibang kopya ng dataset ang gamit, kaya maaaring iba ang 1,000 napiling larawan.")
 
 if pools is None:
-    raw = WORK / "beans_raw"
-    raw.mkdir(exist_ok=True)
-    for split in ["train", "validation", "test"]:
-        url = f"https://huggingface.co/datasets/AI-Lab-Makerere/beans/resolve/main/data/{split}.zip"
-        zp = raw / f"{split}.zip"
-        print("Downloading", url)
-        urllib.request.urlretrieve(url, zp)
-        zipfile.ZipFile(zp).extractall(raw)
-    pools, source = collect_pools(raw), raw
-
+    raise RuntimeError("Walang dataset: i-on ang Internet o i-attach ang isang beans dataset (Add Input).")
 print("Source:", source)
 for c in CLASSES:
     print(f"  {c:18s} {len(pools[c]):5d} larawan")
