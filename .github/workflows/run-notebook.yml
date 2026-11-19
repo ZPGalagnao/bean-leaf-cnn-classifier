@@ -1,0 +1,33 @@
+name: Run Kaggle notebook (test)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run-notebook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install packages
+        run: pip install -r training/requirements.txt pandas jinja2 jupyter nbconvert ipykernel
+      - name: Execute notebook
+        run: |
+          mkdir -p executed
+          jupyter nbconvert --to notebook --execute Bean_Leaf_CNN_Kaggle.ipynb \
+            --ExecutePreprocessor.timeout=2400 --output executed/Bean_Leaf_CNN_Kaggle_executed.ipynb
+          ls -la executed
+      - name: Publish executed notebook
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: notebook-${{ github.run_number }}
+          name: Executed Kaggle notebook (run ${{ github.run_number }})
+          make_latest: false
+          body: Notebook na napatakbo na, kasama ang lahat ng output (accuracy, graphs, confusion matrix).
+          files: executed/Bean_Leaf_CNN_Kaggle_executed.ipynb
