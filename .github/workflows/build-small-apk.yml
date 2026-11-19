@@ -1,0 +1,70 @@
+name: Build small APKs (reuse trained model)
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_tag:
+        description: Release tag whose trained model (bean_cnn.tflite) to reuse
+        default: build-4
+
+permissions:
+  contents: write
+
+jobs:
+  build-small:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reuse the trained CNN model from the release
+        run: |
+          mkdir -p flutter_app/assets/model
+          curl -L -sSf -o flutter_app/assets/model/bean_cnn.tflite \
+            "https://github.com/${{ github.repository }}/releases/download/${{ inputs.model_tag }}/bean_cnn.tflite"
+          printf 'angular_leaf_spot\nbean_rust\nhealthy\n' > flutter_app/assets/model/labels.txt
+          ls -la flutter_app/assets/model
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android project files
+        working-directory: flutter_app
+        run: |
+          flutter create --platforms=android --org com.zpgalagnao --project-name bean_leaf_classifier .
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 26/' android/app/build.gradle.kts
+          sed -i 's/android:label="bean_leaf_classifier"/android:label="Bean Leaf CNN"/' android/app/src/main/AndroidManifest.xml
+          echo "kotlin.jvm.target.validation.mode=warning" >> android/gradle.properties
+          printf '\nandroid {\n    lint {\n        checkReleaseBuilds = false\n    }\n}\n' >> android/app/build.gradle.kts
+          printf -- '-keep class org.tensorflow.lite.** { *; }\n-dontwarn org.tensorflow.lite.**\n' >> android/app/proguard-rules.pro
+
+      - name: Build one APK per CPU type
+        working-directory: flutter_app
+        run: |
+          flutter pub get
+          flutter build apk --release --split-per-abi
+          mkdir -p ../release
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk ../release/BeanLeafCNN-arm64.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk ../release/BeanLeafCNN-armv7.apk
+          ls -la ../release
+
+      - name: Publish small APKs
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: small-${{ github.run_number }}
+          name: Bean Leaf CNN - small APKs (model from ${{ inputs.model_tag }})
+          make_latest: false
+          body: |
+            Mas maliit na APK, parehong CNN model ng ${{ inputs.model_tag }}.
+            - **BeanLeafCNN-arm64.apk**: para sa karamihan ng phone (64-bit). Subukan muna ito.
+            - **BeanLeafCNN-armv7.apk**: para sa luma o mumurahing phone (32-bit) kung ayaw gumana ang arm64.
+          files: |
+            release/BeanLeafCNN-arm64.apk
+            release/BeanLeafCNN-armv7.apk
