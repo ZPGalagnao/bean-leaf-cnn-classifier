@@ -1,0 +1,109 @@
+name: Train CNN and build APK
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  train-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------- 1. Dataset + CNN training (Python / TensorFlow) ----------
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install training packages
+        run: pip install -r training/requirements.txt
+
+      - name: Download iBeans dataset (Makerere AI Lab)
+        run: |
+          mkdir -p data/raw && cd data/raw
+          for f in train validation test; do
+            curl -L -sSf -o "$f.zip" "https://huggingface.co/datasets/AI-Lab-Makerere/beans/resolve/main/data/$f.zip"
+            unzip -q "$f.zip"
+          done
+          find . -maxdepth 2 -type d
+
+      - name: Select exactly 1,000 images (70/15/15 split)
+        run: python training/prepare_dataset.py --raw data/raw
+
+      - name: Train CNN and export TensorFlow Lite model
+        run: python training/train_cnn.py
+
+      - name: Upload training results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: training-results
+          path: |
+            training/outputs/*.png
+            training/outputs/*.json
+            training/outputs/*.txt
+            training/outputs/*.md
+            training/outputs/bean_cnn.tflite
+            training/outputs/bean_cnn.keras
+
+      # ---------- 2. Flutter app -> Android APK ----------
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android project files
+        working-directory: flutter_app
+        run: |
+          flutter --version
+          flutter create --platforms=android --org com.zpgalagnao --project-name bean_leaf_classifier .
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 26/' android/app/build.gradle.kts
+          sed -i 's/android:label="bean_leaf_classifier"/android:label="Bean Leaf CNN"/' android/app/src/main/AndroidManifest.xml
+          grep -n "minSdk" android/app/build.gradle.kts
+          ls -la assets/model
+
+      - name: Analyze Dart code
+        working-directory: flutter_app
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Build release APK
+        working-directory: flutter_app
+        run: |
+          flutter build apk --release
+          mkdir -p ../release
+          cp build/app/outputs/flutter-apk/app-release.apk ../release/BeanLeafCNN.apk
+          ls -la ../release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BeanLeafCNN-apk
+          path: release/BeanLeafCNN.apk
+
+      - name: Publish release (direct download link for the phone)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Bean Leaf CNN APK (build ${{ github.run_number }})
+          make_latest: true
+          body_path: training/outputs/release_notes.md
+          files: |
+            release/BeanLeafCNN.apk
+            training/outputs/training_curves.png
+            training/outputs/confusion_matrix.png
+            training/outputs/sample_predictions.png
+            training/outputs/metrics.json
+            training/outputs/bean_cnn.tflite
