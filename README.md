@@ -6,7 +6,7 @@ malaman kung ang dahon ng bean (sitaw/habichuelas) ay **Healthy**, may **Angular
 
 ## I-install sa phone (Android)
 
-1. Sa phone, buksan ang link na ito (o i-scan ang QR code mula sa PC):
+1. Sa phone, buksan ang link na ito:
    **https://github.com/ZPGalagnao/bean-leaf-cnn-classifier/releases/latest/download/BeanLeafCNN.apk**
 2. I-tap ang na-download na `BeanLeafCNN.apk`.
 3. Kapag lumabas ang *"Install unknown apps"*, i-allow ito para sa browser o Files app mo, tapos **Install**.
@@ -48,12 +48,36 @@ Dense 3 Softmax  ->  [angular_leaf_spot, bean_rust, healthy]
 - **EarlyStopping** (patience 12, ibinabalik ang pinakamahusay na weights), hanggang 60 epochs
 - Na-convert sa **TensorFlow Lite** (`bean_cnn.tflite`, mga 1.7 MB) para tumakbo sa phone
 
-## Resulta
+## Resulta (model na nasa APK, build 4)
 
-Makikita ang eksaktong numbers at graphs sa
-[Releases page](https://github.com/ZPGalagnao/bean-leaf-cnn-classifier/releases/latest)
-(`metrics.json`, `training_curves.png`, `confusion_matrix.png`, `sample_predictions.png`) at sa
-`training/outputs/` kapag na-train mo nang local.
+Dalawang CNN ang na-train mula sa simula at pinili ang may pinakamataas na **validation** accuracy:
+
+| Model | Parameters | Epochs | Best val acc | Test acc |
+|---|---|---|---|---|
+| CNN A: plain (Conv-ReLU-Pool, Flatten) | 1,289,923 | 50 | 88.0% | 78.7% |
+| **CNN B: BatchNorm + GlobalAvgPool (nasa app)** | **423,139** | **30** | **89.3%** | **84.0%** |
+
+Test set (150 larawan na hindi nakita ng model), CNN B / TFLite sa phone: **84.0% accuracy**
+
+| Class | Precision | Recall | F1 |
+|---|---|---|---|
+| Angular Leaf Spot | 0.93 | 0.80 | 0.86 |
+| Bean Rust | 0.72 | 0.84 | 0.78 |
+| Healthy | 0.90 | 0.88 | 0.89 |
+
+Graphs: [training curves](training/outputs/training_curves.png),
+[confusion matrix](training/outputs/confusion_matrix.png),
+[sample predictions](training/outputs/sample_predictions.png). Mga numero: `training/outputs/metrics.json`.
+
+Tandaan: bahagyang nag-iiba ang accuracy sa bawat training run (random ang augmentation at ang
+pagkakasunod ng data). Sa mga run natin, 75% hanggang 84% ang test accuracy.
+
+## Sample na larawan para subukan ang app
+
+Nasa [`sample_test_images/`](sample_test_images) ang 12 larawan mula sa **test set** (hindi nakita ng
+model habang nagte-train): 4 na Angular Leaf Spot, 4 na Bean Rust, 4 na Healthy. Tama ang hula ng APK model
+sa lahat ng 12. Sa phone: buksan ang larawan sa GitHub, i-long-press, piliin ang *Download image*, tapos
+piliin ito sa **Gallery** sa app.
 
 ## Paano gumagana ang app
 

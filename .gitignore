@@ -2,6 +2,9 @@
 data/
 dataset/
 training/outputs/saved_model/
+training/outputs/*.keras
+training/outputs/release_notes.md
+flutter_app/assets/model/
 __pycache__/
 *.pyc
 

@@ -1,0 +1,57 @@
+{
+  "chosen_model": "CNN B (batchnorm)",
+  "model_comparison": {
+    "CNN A (plain)": {
+      "parameters": 1289923,
+      "epochs_trained": 50,
+      "best_val_accuracy": 0.88,
+      "test_accuracy": 0.7867
+    },
+    "CNN B (batchnorm)": {
+      "parameters": 423139,
+      "epochs_trained": 30,
+      "best_val_accuracy": 0.8933,
+      "test_accuracy": 0.84
+    }
+  },
+  "image_size": 128,
+  "epochs_trained": 30,
+  "parameters": 423139,
+  "test_accuracy_keras": 0.84,
+  "test_accuracy_tflite": 0.84,
+  "best_val_accuracy": 0.8933,
+  "tflite_size_kb": 1652.6,
+  "classification_report": {
+    "Angular Leaf Spot": {
+      "precision": 0.9302325581395349,
+      "recall": 0.8,
+      "f1-score": 0.8602150537634409,
+      "support": 50.0
+    },
+    "Bean Rust": {
+      "precision": 0.7241379310344828,
+      "recall": 0.84,
+      "f1-score": 0.7777777777777778,
+      "support": 50.0
+    },
+    "Healthy": {
+      "precision": 0.8979591836734694,
+      "recall": 0.88,
+      "f1-score": 0.8888888888888888,
+      "support": 50.0
+    },
+    "accuracy": 0.84,
+    "macro avg": {
+      "precision": 0.8507765576158289,
+      "recall": 0.84,
+      "f1-score": 0.8422939068100358,
+      "support": 150.0
+    },
+    "weighted avg": {
+      "precision": 0.8507765576158289,
+      "recall": 0.84,
+      "f1-score": 0.8422939068100358,
+      "support": 150.0
+    }
+  }
+}

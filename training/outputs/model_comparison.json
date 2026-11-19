@@ -1,0 +1,17 @@
+{
+  "chosen": "CNN B (batchnorm)",
+  "models": {
+    "CNN A (plain)": {
+      "parameters": 1289923,
+      "epochs_trained": 50,
+      "best_val_accuracy": 0.88,
+      "test_accuracy": 0.7867
+    },
+    "CNN B (batchnorm)": {
+      "parameters": 423139,
+      "epochs_trained": 30,
+      "best_val_accuracy": 0.8933,
+      "test_accuracy": 0.84
+    }
+  }
+}
