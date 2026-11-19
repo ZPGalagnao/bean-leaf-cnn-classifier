@@ -56,7 +56,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - uses: subosito/flutter-action@v2
         with:
@@ -72,6 +72,9 @@ jobs:
           sed -i 's/android:label="bean_leaf_classifier"/android:label="Bean Leaf CNN"/' android/app/src/main/AndroidManifest.xml
           # tflite_flutter compiles Java 11 + Kotlin 17; allow the mismatch instead of failing
           echo "kotlin.jvm.target.validation.mode=warning" >> android/gradle.properties
+          # skip the release lint check (it crashes inside a plugin, not in our code)
+          printf '\nandroid {\n    lint {\n        checkReleaseBuilds = false\n    }\n}\n' >> android/app/build.gradle.kts
+          tail -8 android/app/build.gradle.kts
           grep -n "minSdk" android/app/build.gradle.kts
           ls -la assets/model
 
