@@ -34,7 +34,7 @@ CLASSES = ["angular_leaf_spot", "bean_rust", "healthy"]
 DISPLAY = {"angular_leaf_spot": "Angular Leaf Spot", "bean_rust": "Bean Rust", "healthy": "Healthy"}
 IMG_SIZE = 128
 BATCH_SIZE = 32
-EPOCHS = 60
+EPOCHS = 50
 SEED = 42
 
 
@@ -51,13 +51,28 @@ def load_split(name: str, shuffle: bool) -> tf.data.Dataset:
     )
 
 
-def build_cnn() -> keras.Model:
-    """4 convolutional blocks -> global average pooling -> dense classifier."""
+def build_cnn_plain() -> keras.Model:
+    """CNN A (classic): 4 x [Conv2D -> ReLU -> MaxPool] -> Flatten -> Dense."""
+    inputs = keras.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="image")
+    x = layers.Rescaling(1.0 / 255, name="normalize")(inputs)
+    for i, filters in enumerate((32, 64, 128, 128), start=1):
+        x = layers.Conv2D(filters, 3, padding="same", activation="relu", name=f"conv{i}")(x)
+        x = layers.MaxPooling2D(name=f"pool{i}")(x)
+    x = layers.Flatten(name="flatten")(x)
+    x = layers.Dropout(0.5, name="dropout1")(x)
+    x = layers.Dense(128, activation="relu", name="dense")(x)
+    x = layers.Dropout(0.3, name="dropout2")(x)
+    outputs = layers.Dense(len(CLASSES), activation="softmax", name="probabilities")(x)
+    return keras.Model(inputs, outputs, name="cnn_plain")
+
+
+def build_cnn_batchnorm() -> keras.Model:
+    """CNN B: 4 x [Conv2D -> BatchNorm -> ReLU -> MaxPool] -> GlobalAvgPool -> Dense."""
     inputs = keras.Input(shape=(IMG_SIZE, IMG_SIZE, 3), name="image")
     x = layers.Rescaling(1.0 / 255, name="normalize")(inputs)
     for i, filters in enumerate((32, 64, 128, 256), start=1):
         x = layers.Conv2D(filters, 3, padding="same", use_bias=False, name=f"conv{i}")(x)
-        x = layers.BatchNormalization(name=f"bn{i}")(x)
+        x = layers.BatchNormalization(momentum=0.9, name=f"bn{i}")(x)
         x = layers.Activation("relu", name=f"relu{i}")(x)
         x = layers.MaxPooling2D(name=f"pool{i}")(x)
     x = layers.GlobalAveragePooling2D(name="gap")(x)
@@ -65,7 +80,34 @@ def build_cnn() -> keras.Model:
     x = layers.Dense(128, activation="relu", name="dense")(x)
     x = layers.Dropout(0.3, name="dropout2")(x)
     outputs = layers.Dense(len(CLASSES), activation="softmax", name="probabilities")(x)
-    return keras.Model(inputs, outputs, name="bean_leaf_cnn")
+    return keras.Model(inputs, outputs, name="cnn_batchnorm")
+
+
+CANDIDATES = {
+    "CNN A (plain)": build_cnn_plain,
+    "CNN B (batchnorm)": build_cnn_batchnorm,
+}
+
+
+def train_candidate(builder, train_aug, val_ds):
+    keras.utils.set_random_seed(SEED)
+    model = builder()
+    model.compile(optimizer=keras.optimizers.Adam(1e-3),
+                  loss="sparse_categorical_crossentropy",
+                  metrics=["accuracy"])
+    history = model.fit(
+        train_aug,
+        validation_data=val_ds,
+        epochs=EPOCHS,
+        callbacks=[
+            keras.callbacks.EarlyStopping(monitor="val_accuracy", mode="max", patience=15,
+                                          restore_best_weights=True),
+            keras.callbacks.ReduceLROnPlateau(monitor="val_accuracy", mode="max", factor=0.5,
+                                              patience=6, min_lr=1e-5),
+        ],
+        verbose=2,
+    )
+    return model, history
 
 
 def plot_history(history: keras.callbacks.History) -> None:
@@ -160,28 +202,35 @@ def main() -> None:
     train_aug = train_ds.map(lambda x, y: (augment(x, training=True), y),
                              num_parallel_calls=autotune).prefetch(autotune)
 
-    model = build_cnn()
-    model.compile(optimizer=keras.optimizers.Adam(1e-3),
-                  loss="sparse_categorical_crossentropy",
-                  metrics=["accuracy"])
+    # ---- I-train ang 2 CNN variants, piliin ang may pinakamataas na validation accuracy ----
+    y_true = np.concatenate([y.numpy() for _, y in test_ds])
+    comparison = {}
+    best = None
+    for name, builder in CANDIDATES.items():
+        print(f"\n===== Training {name} =====")
+        cand, hist = train_candidate(builder, train_aug, val_ds.prefetch(autotune))
+        val_acc = float(max(hist.history["val_accuracy"]))
+        cand_test = float((cand.predict(test_ds, verbose=0).argmax(axis=1) == y_true).mean())
+        comparison[name] = {
+            "parameters": int(cand.count_params()),
+            "epochs_trained": len(hist.history["loss"]),
+            "best_val_accuracy": round(val_acc, 4),
+            "test_accuracy": round(cand_test, 4),
+        }
+        print(f"{name}: best val acc {val_acc:.4f}, test acc {cand_test:.4f}")
+        if best is None or val_acc > best[2]:
+            best = (name, cand, val_acc, hist)
+    chosen_name, model, _, history = best
+    print(f"\nNapiling model (pinakamataas na validation accuracy): {chosen_name}")
+    (OUT_DIR / "model_comparison.json").write_text(
+        json.dumps({"chosen": chosen_name, "models": comparison}, indent=2))
+
     model.summary()
     with open(OUT_DIR / "model_summary.txt", "w", encoding="utf-8") as f:
         model.summary(print_fn=lambda line, **_: f.write(line + "\n"))
-
-    history = model.fit(
-        train_aug,
-        validation_data=val_ds.prefetch(autotune),
-        epochs=EPOCHS,
-        callbacks=[
-            keras.callbacks.EarlyStopping(monitor="val_loss", patience=12, restore_best_weights=True),
-            keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=5, min_lr=1e-5),
-        ],
-        verbose=2,
-    )
     plot_history(history)
 
     # ---- Evaluation sa test set (150 larawan na hindi nakita ng model) ----
-    y_true = np.concatenate([y.numpy() for _, y in test_ds])
     y_prob = model.predict(test_ds, verbose=0)
     y_pred = y_prob.argmax(axis=1)
     test_acc = float((y_pred == y_true).mean())
@@ -203,6 +252,8 @@ def main() -> None:
     shutil.copy2(OUT_DIR / "labels.txt", APP_MODEL_DIR / "labels.txt")
 
     metrics = {
+        "chosen_model": chosen_name,
+        "model_comparison": comparison,
         "image_size": IMG_SIZE,
         "epochs_trained": len(history.history["loss"]),
         "parameters": int(model.count_params()),
@@ -217,14 +268,20 @@ def main() -> None:
     rows = "\n".join(
         f"| {DISPLAY[c]} | {report[DISPLAY[c]]['precision']:.2f} | {report[DISPLAY[c]]['recall']:.2f} "
         f"| {report[DISPLAY[c]]['f1-score']:.2f} |" for c in CLASSES)
+    cmp_rows = "\n".join(
+        f"| {n} | {m['parameters']:,} | {m['epochs_trained']} | {m['best_val_accuracy']:.1%} "
+        f"| {m['test_accuracy']:.1%} |" for n, m in comparison.items())
     (OUT_DIR / "release_notes.md").write_text(
         "## Bean Leaf CNN Classifier\n\n"
         "**I-download sa phone:** i-tap ang `BeanLeafCNN.apk` sa ibaba, tapos i-install.\n\n"
         f"- Dataset: 1,000 bean leaf images (700 train / 150 validation / 150 test)\n"
-        f"- CNN trained from scratch: {metrics['parameters']:,} parameters, "
-        f"{metrics['epochs_trained']} epochs, input {IMG_SIZE}x{IMG_SIZE}\n"
+        f"- Model sa app: **{chosen_name}**, CNN trained from scratch, "
+        f"{metrics['parameters']:,} parameters, input {IMG_SIZE}x{IMG_SIZE}\n"
         f"- **Test accuracy: {test_acc:.1%}** (TFLite on phone: {lite_acc:.1%})\n\n"
-        "| Class | Precision | Recall | F1 |\n|---|---|---|---|\n" + rows + "\n")
+        "| Class | Precision | Recall | F1 |\n|---|---|---|---|\n" + rows + "\n\n"
+        "### Model comparison\n\n"
+        "| Model | Parameters | Epochs | Best val acc | Test acc |\n|---|---|---|---|---|\n"
+        + cmp_rows + "\n")
 
     print(json.dumps({k: v for k, v in metrics.items() if k != "classification_report"}, indent=2))
 

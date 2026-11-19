@@ -70,6 +70,8 @@ jobs:
           flutter create --platforms=android --org com.zpgalagnao --project-name bean_leaf_classifier .
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 26/' android/app/build.gradle.kts
           sed -i 's/android:label="bean_leaf_classifier"/android:label="Bean Leaf CNN"/' android/app/src/main/AndroidManifest.xml
+          # tflite_flutter compiles Java 11 + Kotlin 17; allow the mismatch instead of failing
+          echo "kotlin.jvm.target.validation.mode=warning" >> android/gradle.properties
           grep -n "minSdk" android/app/build.gradle.kts
           ls -la assets/model
 
@@ -106,4 +108,5 @@ jobs:
             training/outputs/confusion_matrix.png
             training/outputs/sample_predictions.png
             training/outputs/metrics.json
+            training/outputs/model_comparison.json
             training/outputs/bean_cnn.tflite

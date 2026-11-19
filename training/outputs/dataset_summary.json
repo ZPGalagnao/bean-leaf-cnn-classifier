@@ -1,0 +1,20 @@
+{
+  "total": 1000,
+  "splits": {
+    "train": {
+      "angular_leaf_spot": 234,
+      "bean_rust": 233,
+      "healthy": 233
+    },
+    "val": {
+      "angular_leaf_spot": 50,
+      "bean_rust": 50,
+      "healthy": 50
+    },
+    "test": {
+      "angular_leaf_spot": 50,
+      "bean_rust": 50,
+      "healthy": 50
+    }
+  }
+}
